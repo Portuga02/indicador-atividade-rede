@@ -9,14 +9,21 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.List;
 
+/**
+ * Tela de estatisticas avancadas: lista todas as interfaces de rede da maquina
+ * com seus detalhes (endereco MAC, status, total enviado/recebido).
+ * Versao simplificada do frmAdvanced.cs original (que dependia de APIs
+ * especificas do Windows para tabelas de conexao TCP/UDP por processo).
+ */
 public class DialogoAvancado extends JDialog {
 
     private final DefaultTableModel modelo;
-    private final MonitorDeRede monitor = new MonitorDeRede();
+    private final MonitorDeRede monitor;
     private javax.swing.Timer timerAtualizacao;
 
-    public DialogoAvancado(Frame dono) {
+    public DialogoAvancado(Frame dono, MonitorDeRede monitor) {
         super(dono, "Estatisticas Avancadas", false);
+        this.monitor = monitor;
         setLayout(new BorderLayout(8, 8));
         setSize(680, 380);
         setLocationRelativeTo(dono);

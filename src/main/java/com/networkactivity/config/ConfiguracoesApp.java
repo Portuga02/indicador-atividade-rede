@@ -107,9 +107,9 @@ public class ConfiguracoesApp {
         PREFS.putInt(PING_INTERVALO_MS, valor);
     }
 
-    // ---- Intervalo de atualizacao do monitor ----
+    // ---- Intervalo de atualizacao do monitor (equivalente ao "BlinkDuration" do app original) ----
     public int getIntervaloAtualizacaoMs() {
-        return PREFS.getInt(INTERVALO_ATUALIZACAO_MS, 1000);
+        return PREFS.getInt(INTERVALO_ATUALIZACAO_MS, 100);
     }
 
     public void setIntervaloAtualizacaoMs(int valor) {

@@ -29,11 +29,11 @@ public class DialogoConfiguracoes extends JDialog {
     private final List<JCheckBox> checkboxesInterfaces = new ArrayList<>();
     private final List<InterfaceDeRede> interfacesDisponiveis;
 
-    public DialogoConfiguracoes(Frame dono, ConfiguracoesApp config, Runnable aoSalvar) {
+    public DialogoConfiguracoes(Frame dono, ConfiguracoesApp config, MonitorDeRede monitor, Runnable aoSalvar) {
         super(dono, "Configuracoes", true);
         this.config = config;
         this.aoSalvar = aoSalvar;
-        this.interfacesDisponiveis = new MonitorDeRede().listarInterfaces();
+        this.interfacesDisponiveis = monitor.listarInterfaces();
 
         setLayout(new BorderLayout());
         setSize(460, 420);
@@ -92,7 +92,7 @@ public class DialogoConfiguracoes extends JDialog {
         c.gridy++;
         painel.add(new JLabel("Intervalo de atualizacao (ms):"), c);
         c.gridx = 1;
-        spnIntervaloAtualizacao = new JSpinner(new SpinnerNumberModel(1000, 250, 10000, 250));
+        spnIntervaloAtualizacao = new JSpinner(new SpinnerNumberModel(100, 50, 10000, 50));
         painel.add(spnIntervaloAtualizacao, c);
 
         return painel;

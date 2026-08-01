@@ -68,7 +68,7 @@ public class JanelaPrincipal extends JFrame {
         btnConfig.addActionListener(e -> abrirConfiguracoes());
 
         JButton btnAvancado = criarBotaoBarra("Avancado");
-        btnAvancado.addActionListener(e -> new DialogoAvancado(this).setVisible(true));
+        btnAvancado.addActionListener(e -> new DialogoAvancado(this, monitor).setVisible(true));
 
         JButton btnSobre = criarBotaoBarra("Sobre");
         btnSobre.addActionListener(e -> new DialogoSobre(this).setVisible(true));
@@ -90,6 +90,7 @@ public class JanelaPrincipal extends JFrame {
         painel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         grafico = new PainelDeGrafico();
+        grafico.setMaxAmostrasNaMemoria(300); // 300 amostras x 100ms = 30 segundos de historico
         serieDownload = grafico.adicionarSerie("Download", "KB/s", new Color(0, 176, 80));
         serieUpload = grafico.adicionarSerie("Upload", "KB/s", new Color(0, 112, 219));
 
@@ -145,7 +146,7 @@ public class JanelaPrincipal extends JFrame {
         itemConfig.addActionListener(e -> abrirConfiguracoes());
 
         MenuItem itemAvancado = new MenuItem("Estatisticas avancadas...");
-        itemAvancado.addActionListener(e -> new DialogoAvancado(this).setVisible(true));
+        itemAvancado.addActionListener(e -> new DialogoAvancado(this, monitor).setVisible(true));
 
         MenuItem itemSobre = new MenuItem("Sobre...");
         itemSobre.addActionListener(e -> new DialogoSobre(this).setVisible(true));
@@ -181,7 +182,7 @@ public class JanelaPrincipal extends JFrame {
     }
 
     private void abrirConfiguracoes() {
-        DialogoConfiguracoes dialogo = new DialogoConfiguracoes(this, config, this::reiniciarMonitoramento);
+        DialogoConfiguracoes dialogo = new DialogoConfiguracoes(this, config, monitor, this::reiniciarMonitoramento);
         dialogo.setVisible(true);
     }
 
