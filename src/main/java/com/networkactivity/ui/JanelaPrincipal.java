@@ -2,15 +2,21 @@ package com.networkactivity.ui;
 
 import com.networkactivity.config.ConfiguracoesApp;
 import com.networkactivity.icones.GerenciadorDeIcones;
+import com.networkactivity.icones.GerenciadorDeIcones.StatusConexao;
 import com.networkactivity.rede.CalculadoraDeNivel;
+import com.networkactivity.rede.InterfaceDeRede;
 import com.networkactivity.rede.MonitorDeRede;
+import com.networkactivity.rede.VerificadorDePing;
 import com.networkactivity.util.Formatador;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Janela principal do aplicativo: mostra o grafico de trafego em tempo real e
@@ -27,9 +33,15 @@ public class JanelaPrincipal extends JFrame {
 	private static final Color COR_DOWNLOAD = new Color(0, 176, 80);
 	private static final Color COR_UPLOAD = new Color(0, 112, 219);
 
+	/** Acima desta latencia o status do ping passa de OK para ALERTA. */
+	private static final long LIMITE_ALERTA_PING_MS = 150;
+	/** Quantas falhas seguidas sao necessarias para avisar "conexao perdida". */
+	private static final int FALHAS_PARA_AVISAR = 2;
+
 	private final ConfiguracoesApp config = new ConfiguracoesApp();
 	private final MonitorDeRede monitor = new MonitorDeRede();
 	private final CalculadoraDeNivel calculadora = new CalculadoraDeNivel();
+	private final VerificadorDePing verificadorPing = new VerificadorDePing();
 	private GerenciadorDeIcones icones;
 
 	private TrayIcon trayIcon;
@@ -42,11 +54,25 @@ public class JanelaPrincipal extends JFrame {
 	private JLabel lblTotalRecebido;
 	private JLabel lblTotalEnviado;
 
+	// barra de status
+	private JLabel lblStatusPing;
+	private JLabel lblAdaptador;
+	private final Map<StatusConexao, Icon> cacheIconesStatus = new EnumMap<>(StatusConexao.class);
+
 	private javax.swing.Timer timerMonitoramento;
+	private javax.swing.Timer timerAdaptador;
 
 	private long bytesRecebidosAnterior = -1;
 	private long bytesEnviadosAnterior = -1;
 	private int contadorOcioso = 0;
+
+	// estado do ping / avisos
+	private int falhasConsecutivas = 0;
+	private boolean conexaoCaida = false;
+
+	// adaptador em uso
+	private final Map<String, Long> totaisAnterioresAdaptador = new HashMap<>();
+	private String adaptadorAtual = "-";
 
 	public JanelaPrincipal() {
 		super("Indicador de Atividade de Rede");
@@ -54,19 +80,21 @@ public class JanelaPrincipal extends JFrame {
 
 		setIconImage(icones.getIconeInativo());
 		setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-		setSize(540, 440);
-		setMinimumSize(new Dimension(460, 380));
+		setSize(540, 470);
+		setMinimumSize(new Dimension(500, 420));
 		setLocationRelativeTo(null);
 		setLayout(new BorderLayout());
 		getContentPane().setBackground(BEGE_XP);
 
 		add(montarBarraSuperior(), BorderLayout.NORTH);
 		add(montarPainelCentral(), BorderLayout.CENTER);
-		add(montarPainelInferior(), BorderLayout.SOUTH);
+		add(montarRodape(), BorderLayout.SOUTH);
 
 		configurarFechamentoParaBandeja();
 		configurarBandeja();
 		iniciarMonitoramento();
+		iniciarPing();
+		iniciarAtualizacaoDoAdaptador();
 	}
 
 	// ---------------------------------------------------------------
@@ -144,10 +172,19 @@ public class JanelaPrincipal extends JFrame {
 		return painel;
 	}
 
+	/** Rodape = painel de estatisticas + barra de status (ping / adaptador). */
+	private JPanel montarRodape() {
+		JPanel rodape = new JPanel(new BorderLayout());
+		rodape.setBackground(BEGE_XP);
+		rodape.add(montarPainelInferior(), BorderLayout.CENTER);
+		rodape.add(montarBarraStatus(), BorderLayout.SOUTH);
+		return rodape;
+	}
+
 	private JPanel montarPainelInferior() {
 		JPanel externo = new JPanel(new BorderLayout());
 		externo.setBackground(BEGE_XP);
-		externo.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
+		externo.setBorder(BorderFactory.createEmptyBorder(0, 12, 10, 12));
 
 		JPanel painel = new JPanel(new GridLayout(2, 2, 14, 6));
 		painel.setBackground(BEGE_XP);
@@ -173,6 +210,37 @@ public class JanelaPrincipal extends JFrame {
 
 		externo.add(painel, BorderLayout.CENTER);
 		return externo;
+	}
+
+	/**
+	 * Barra de status no estilo XP: circulo + ping a esquerda, adaptador a direita.
+	 */
+	private JPanel montarBarraStatus() {
+		JPanel barra = new JPanel(new BorderLayout(12, 0));
+		barra.setBackground(BEGE_XP);
+		barra.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(172, 168, 153)),
+				BorderFactory.createEmptyBorder(5, 12, 5, 12)));
+
+		lblStatusPing = new JLabel("Ping: desativado");
+		lblStatusPing.setIcon(iconeStatus(StatusConexao.DESCONHECIDO));
+		lblStatusPing.setIconTextGap(6);
+
+		lblAdaptador = new JLabel("Adaptador: -");
+		lblAdaptador.setHorizontalAlignment(SwingConstants.RIGHT);
+		lblAdaptador.setForeground(new Color(70, 70, 70));
+
+		barra.add(lblStatusPing, BorderLayout.WEST);
+		barra.add(lblAdaptador, BorderLayout.CENTER);
+		return barra;
+	}
+
+	/** Circulo colorido (12x12) correspondente ao status, com cache. */
+	private Icon iconeStatus(StatusConexao status) {
+		return cacheIconesStatus.computeIfAbsent(status, s -> {
+			Image img = icones.getIconeCirculoStatus(s);
+			return img == null ? null : new ImageIcon(img.getScaledInstance(12, 12, Image.SCALE_SMOOTH));
+		});
 	}
 
 	private void configurarFechamentoParaBandeja() {
@@ -250,11 +318,112 @@ public class JanelaPrincipal extends JFrame {
 	private void encerrarAplicativo() {
 		if (timerMonitoramento != null)
 			timerMonitoramento.stop();
+		if (timerAdaptador != null)
+			timerAdaptador.stop();
+		verificadorPing.parar();
 		if (trayIcon != null && SystemTray.isSupported()) {
 			SystemTray.getSystemTray().remove(trayIcon);
 		}
 		dispose();
 		System.exit(0);
+	}
+
+	/** Balao de notificacao nativo ao lado do icone da bandeja. */
+	private void notificar(String titulo, String mensagem, TrayIcon.MessageType tipo) {
+		if (trayIcon != null) {
+			trayIcon.displayMessage(titulo, mensagem, tipo);
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// Ping automatico
+	// ---------------------------------------------------------------
+
+	private void iniciarPing() {
+		verificadorPing.parar();
+		falhasConsecutivas = 0;
+		conexaoCaida = false;
+
+		String host = config.getPingHost();
+		if (!config.isPingAutomaticoAtivo() || host == null || host.isBlank()) {
+			atualizarStatusPing(StatusConexao.DESCONHECIDO, "Ping: desativado");
+			return;
+		}
+
+		atualizarStatusPing(StatusConexao.DESCONHECIDO, "Ping: verificando " + host + "...");
+		verificadorPing.iniciar(host, config.getPingIntervaloMs(),
+				resultado -> SwingUtilities.invokeLater(() -> tratarResultadoPing(resultado)));
+	}
+
+	private void tratarResultadoPing(VerificadorDePing.Resultado r) {
+		if (!r.isSucesso()) {
+			falhasConsecutivas++;
+			atualizarStatusPing(StatusConexao.FALHA, "Ping: sem resposta (" + r.getHost() + ")");
+
+			if (falhasConsecutivas >= FALHAS_PARA_AVISAR && !conexaoCaida) {
+				conexaoCaida = true;
+				notificar("Conexao perdida", "Sem resposta de " + r.getHost() + ".", TrayIcon.MessageType.ERROR);
+			}
+			return;
+		}
+
+		falhasConsecutivas = 0;
+		StatusConexao status = r.getLatenciaMs() >= LIMITE_ALERTA_PING_MS ? StatusConexao.ALERTA : StatusConexao.OK;
+		String texto = r.getLatenciaMs() > 0 ? "Ping: " + r.getLatenciaMs() + " ms (" + r.getHost() + ")"
+				: "Ping: OK (" + r.getHost() + ")";
+		atualizarStatusPing(status, texto);
+
+		if (conexaoCaida) {
+			conexaoCaida = false;
+			notificar("Conexao restabelecida", "A conexao com " + r.getHost() + " voltou.", TrayIcon.MessageType.INFO);
+		}
+	}
+
+	private void atualizarStatusPing(StatusConexao status, String texto) {
+		lblStatusPing.setIcon(iconeStatus(status));
+		lblStatusPing.setText(texto);
+	}
+
+	// ---------------------------------------------------------------
+	// Adaptador em uso (o que mais trafegou desde a ultima verificacao)
+	// ---------------------------------------------------------------
+
+	private void iniciarAtualizacaoDoAdaptador() {
+		timerAdaptador = new javax.swing.Timer(3000, e -> atualizarAdaptador());
+		timerAdaptador.start();
+	}
+
+	private void atualizarAdaptador() {
+		List<String> habilitadas = config.getInterfacesHabilitadas();
+		String maisAtivo = null;
+		long maiorDelta = 0;
+
+		for (InterfaceDeRede itf : monitor.listarInterfaces()) {
+			if (!habilitadas.isEmpty() && !habilitadas.contains(itf.getMacAddress())) {
+				continue;
+			}
+			long total = itf.getBytesRecebidos() + itf.getBytesEnviados();
+			Long anterior = totaisAnterioresAdaptador.put(itf.getNomeTecnico(), total);
+			if (anterior != null) {
+				long delta = total - anterior;
+				if (delta > maiorDelta) {
+					maiorDelta = delta;
+					maisAtivo = itf.getNomeExibicao();
+				}
+			}
+		}
+
+		if (maisAtivo != null) {
+			adaptadorAtual = maisAtivo;
+		}
+		lblAdaptador.setText("Adaptador: " + abreviar(adaptadorAtual, 38));
+		lblAdaptador.setToolTipText(adaptadorAtual);
+	}
+
+	private String abreviar(String texto, int max) {
+		if (texto == null)
+			return "-";
+		return texto.length() <= max ? texto : texto.substring(0, max - 3) + "...";
 	}
 
 	// ---------------------------------------------------------------
@@ -266,11 +435,15 @@ public class JanelaPrincipal extends JFrame {
 		timerMonitoramento.start();
 	}
 
+	/**
+	 * Chamado ao salvar as configuracoes: reaplica intervalo de atualizacao e ping.
+	 */
 	private void reiniciarMonitoramento() {
 		if (timerMonitoramento != null) {
 			timerMonitoramento.stop();
 		}
 		iniciarMonitoramento();
+		iniciarPing();
 	}
 
 	private void atualizarTrafego() {
