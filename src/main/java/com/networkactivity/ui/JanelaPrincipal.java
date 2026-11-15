@@ -8,279 +8,340 @@ import com.networkactivity.util.Formatador;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
 
 /**
- * Janela principal do aplicativo: mostra o grafico de trafego em tempo real
- * e gerencia o icone piscante na bandeja do sistema.
- * Porte de MainForm.cs, adaptado ao modelo de bandeja do Java (java.awt.SystemTray).
+ * Janela principal do aplicativo: mostra o grafico de trafego em tempo real e
+ * gerencia o icone piscante na bandeja do sistema. Porte de MainForm.cs,
+ * adaptado ao modelo de bandeja do Java (java.awt.SystemTray).
  */
 public class JanelaPrincipal extends JFrame {
 
-    private final ConfiguracoesApp config = new ConfiguracoesApp();
-    private final MonitorDeRede monitor = new MonitorDeRede();
-    private final CalculadoraDeNivel calculadora = new CalculadoraDeNivel();
-    private GerenciadorDeIcones icones;
+	private static final Color AZUL_CLARO = new Color(58, 128, 232);
+	private static final Color AZUL_ESCURO = new Color(37, 90, 190);
+	private static final Color AZUL_BORDA = new Color(0, 60, 116);
+	private static final Color BEGE_XP = new Color(236, 233, 216);
+	private static final Color BEGE_HOVER = new Color(255, 240, 207);
+	private static final Color COR_DOWNLOAD = new Color(0, 176, 80);
+	private static final Color COR_UPLOAD = new Color(0, 112, 219);
 
-    private TrayIcon trayIcon;
-    private PainelDeGrafico.Serie serieDownload;
-    private PainelDeGrafico.Serie serieUpload;
-    private PainelDeGrafico grafico;
+	private final ConfiguracoesApp config = new ConfiguracoesApp();
+	private final MonitorDeRede monitor = new MonitorDeRede();
+	private final CalculadoraDeNivel calculadora = new CalculadoraDeNivel();
+	private GerenciadorDeIcones icones;
 
-    private JLabel lblDownloadAtual;
-    private JLabel lblUploadAtual;
-    private JLabel lblTotalRecebido;
-    private JLabel lblTotalEnviado;
+	private TrayIcon trayIcon;
+	private PainelDeGrafico.Serie serieDownload;
+	private PainelDeGrafico.Serie serieUpload;
+	private PainelDeGrafico grafico;
 
-    private javax.swing.Timer timerMonitoramento;
+	private JLabel lblDownloadAtual;
+	private JLabel lblUploadAtual;
+	private JLabel lblTotalRecebido;
+	private JLabel lblTotalEnviado;
 
-    private long bytesRecebidosAnterior = -1;
-    private long bytesEnviadosAnterior = -1;
-    private int contadorOcioso = 0;
+	private javax.swing.Timer timerMonitoramento;
 
-    public JanelaPrincipal() {
-        super("Indicador de Atividade de Rede");
-        icones = new GerenciadorDeIcones();
+	private long bytesRecebidosAnterior = -1;
+	private long bytesEnviadosAnterior = -1;
+	private int contadorOcioso = 0;
 
-        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        setSize(520, 420);
-        setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
+	public JanelaPrincipal() {
+		super("Indicador de Atividade de Rede");
+		icones = new GerenciadorDeIcones();
 
-        add(montarBarraSuperior(), BorderLayout.NORTH);
-        add(montarPainelCentral(), BorderLayout.CENTER);
-        add(montarPainelInferior(), BorderLayout.SOUTH);
+		setIconImage(icones.getIconeInativo());
+		setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+		setSize(540, 440);
+		setMinimumSize(new Dimension(460, 380));
+		setLocationRelativeTo(null);
+		setLayout(new BorderLayout());
+		getContentPane().setBackground(BEGE_XP);
 
-        configurarFechamentoParaBandeja();
-        configurarBandeja();
-        iniciarMonitoramento();
-    }
+		add(montarBarraSuperior(), BorderLayout.NORTH);
+		add(montarPainelCentral(), BorderLayout.CENTER);
+		add(montarPainelInferior(), BorderLayout.SOUTH);
 
-    // ---------------------------------------------------------------
-    // Montagem da interface
-    // ---------------------------------------------------------------
+		configurarFechamentoParaBandeja();
+		configurarBandeja();
+		iniciarMonitoramento();
+	}
 
-    private JPanel montarBarraSuperior() {
-        JPanel barra = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        barra.setBackground(new Color(49, 106, 197)); // azul estilo XP "Luna"
+	// ---------------------------------------------------------------
+	// Montagem da interface
+	// ---------------------------------------------------------------
 
-        JButton btnConfig = criarBotaoBarra("Configuracoes");
-        btnConfig.addActionListener(e -> abrirConfiguracoes());
+	private JPanel montarBarraSuperior() {
+		JPanel barra = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 7)) {
+			@Override
+			protected void paintComponent(Graphics g0) {
+				Graphics2D g = (Graphics2D) g0.create();
+				g.setPaint(new GradientPaint(0, 0, AZUL_CLARO, 0, getHeight(), AZUL_ESCURO));
+				g.fillRect(0, 0, getWidth(), getHeight());
+				g.setColor(new Color(255, 255, 255, 90)); // brilho na borda de cima
+				g.drawLine(0, 0, getWidth(), 0);
+				g.setColor(AZUL_BORDA); // linha de separacao embaixo
+				g.drawLine(0, getHeight() - 1, getWidth(), getHeight() - 1);
+				g.dispose();
+			}
+		};
+		barra.setOpaque(false);
 
-        JButton btnAvancado = criarBotaoBarra("Avancado");
-        btnAvancado.addActionListener(e -> new DialogoAvancado(this, monitor).setVisible(true));
+		JButton btnConfig = criarBotaoBarra("Configuracoes");
+		btnConfig.addActionListener(e -> abrirConfiguracoes());
 
-        JButton btnSobre = criarBotaoBarra("Sobre");
-        btnSobre.addActionListener(e -> new DialogoSobre(this).setVisible(true));
+		JButton btnAvancado = criarBotaoBarra("Avancado");
+		btnAvancado.addActionListener(e -> new DialogoAvancado(this, monitor).setVisible(true));
 
-        barra.add(btnConfig);
-        barra.add(btnAvancado);
-        barra.add(btnSobre);
-        return barra;
-    }
+		JButton btnSobre = criarBotaoBarra("Sobre");
+		btnSobre.addActionListener(e -> new DialogoSobre(this).setVisible(true));
 
-    private JButton criarBotaoBarra(String texto) {
-        JButton botao = new JButton(texto);
-        botao.setFocusPainted(false);
-        return botao;
-    }
+		barra.add(btnConfig);
+		barra.add(btnAvancado);
+		barra.add(btnSobre);
+		return barra;
+	}
 
-    private JPanel montarPainelCentral() {
-        JPanel painel = new JPanel(new BorderLayout());
-        painel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+	private JButton criarBotaoBarra(String texto) {
+		JButton botao = new JButton(texto);
+		botao.setFocusPainted(false);
+		botao.setFont(new Font("Tahoma", Font.BOLD, 11));
+		botao.setForeground(Color.BLACK);
+		botao.setBackground(BEGE_XP);
+		botao.setContentAreaFilled(false);
+		botao.setOpaque(true);
+		botao.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(AZUL_BORDA, 1, true),
+				BorderFactory.createEmptyBorder(4, 14, 4, 14)));
+		botao.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		botao.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseEntered(MouseEvent e) {
+				botao.setBackground(BEGE_HOVER);
+			}
 
-        grafico = new PainelDeGrafico();
-        grafico.setMaxAmostrasNaMemoria(300); // 300 amostras x 100ms = 30 segundos de historico
-        serieDownload = grafico.adicionarSerie("Download", "KB/s", new Color(0, 176, 80));
-        serieUpload = grafico.adicionarSerie("Upload", "KB/s", new Color(0, 112, 219));
+			@Override
+			public void mouseExited(MouseEvent e) {
+				botao.setBackground(BEGE_XP);
+			}
+		});
+		return botao;
+	}
 
-        painel.add(grafico, BorderLayout.CENTER);
-        return painel;
-    }
+	private JPanel montarPainelCentral() {
+		JPanel painel = new JPanel(new BorderLayout());
+		painel.setBackground(BEGE_XP);
+		painel.setBorder(BorderFactory.createEmptyBorder(12, 12, 6, 12));
 
-    private JPanel montarPainelInferior() {
-        JPanel painel = new JPanel(new GridLayout(2, 2, 10, 4));
-        painel.setBorder(BorderFactory.createEmptyBorder(6, 10, 10, 10));
+		grafico = new PainelDeGrafico();
+		grafico.setMaxAmostrasNaMemoria(300); // 300 amostras x 100ms = 30 segundos de historico
+		grafico.setBorder(BorderFactory.createLineBorder(AZUL_BORDA));
+		serieDownload = grafico.adicionarSerie("Download", "KB/s", COR_DOWNLOAD);
+		serieUpload = grafico.adicionarSerie("Upload", "KB/s", COR_UPLOAD);
 
-        lblDownloadAtual = new JLabel("Download atual: 0 B/s");
-        lblUploadAtual = new JLabel("Upload atual: 0 B/s");
-        lblTotalRecebido = new JLabel("Total recebido: 0 B");
-        lblTotalEnviado = new JLabel("Total enviado: 0 B");
+		painel.add(grafico, BorderLayout.CENTER);
+		return painel;
+	}
 
-        painel.add(lblDownloadAtual);
-        painel.add(lblUploadAtual);
-        painel.add(lblTotalRecebido);
-        painel.add(lblTotalEnviado);
-        return painel;
-    }
+	private JPanel montarPainelInferior() {
+		JPanel externo = new JPanel(new BorderLayout());
+		externo.setBackground(BEGE_XP);
+		externo.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
 
-    private void configurarFechamentoParaBandeja() {
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosing(java.awt.event.WindowEvent e) {
-                if (SystemTray.isSupported()) {
-                    setVisible(false);
-                } else {
-                    encerrarAplicativo();
-                }
-            }
-        });
-    }
+		JPanel painel = new JPanel(new GridLayout(2, 2, 14, 6));
+		painel.setBackground(BEGE_XP);
+		painel.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createTitledBorder(BorderFactory.createLineBorder(AZUL_BORDA), "Estatisticas"),
+				BorderFactory.createEmptyBorder(4, 8, 6, 8)));
 
-    // ---------------------------------------------------------------
-    // Bandeja do sistema
-    // ---------------------------------------------------------------
+		lblDownloadAtual = new JLabel("Download atual: 0 B/s");
+		lblUploadAtual = new JLabel("Upload atual: 0 B/s");
+		lblTotalRecebido = new JLabel("Total recebido: 0 B");
+		lblTotalEnviado = new JLabel("Total enviado: 0 B");
 
-    private void configurarBandeja() {
-        if (!SystemTray.isSupported()) {
-            System.err.println("Bandeja do sistema nao suportada nesta plataforma.");
-            return;
-        }
+		Font negrito = new Font("Tahoma", Font.BOLD, 12);
+		lblDownloadAtual.setFont(negrito);
+		lblDownloadAtual.setForeground(new Color(0, 140, 60));
+		lblUploadAtual.setFont(negrito);
+		lblUploadAtual.setForeground(new Color(0, 90, 190));
 
-        PopupMenu menu = new PopupMenu();
+		painel.add(lblDownloadAtual);
+		painel.add(lblUploadAtual);
+		painel.add(lblTotalRecebido);
+		painel.add(lblTotalEnviado);
 
-        MenuItem itemAbrir = new MenuItem("Abrir janela principal");
-        itemAbrir.addActionListener(e -> mostrarJanela());
+		externo.add(painel, BorderLayout.CENTER);
+		return externo;
+	}
 
-        MenuItem itemConfig = new MenuItem("Configuracoes...");
-        itemConfig.addActionListener(e -> abrirConfiguracoes());
+	private void configurarFechamentoParaBandeja() {
+		addWindowListener(new java.awt.event.WindowAdapter() {
+			@Override
+			public void windowClosing(java.awt.event.WindowEvent e) {
+				if (SystemTray.isSupported()) {
+					setVisible(false);
+				} else {
+					encerrarAplicativo();
+				}
+			}
+		});
+	}
 
-        MenuItem itemAvancado = new MenuItem("Estatisticas avancadas...");
-        itemAvancado.addActionListener(e -> new DialogoAvancado(this, monitor).setVisible(true));
+	// ---------------------------------------------------------------
+	// Bandeja do sistema
+	// ---------------------------------------------------------------
 
-        MenuItem itemSobre = new MenuItem("Sobre...");
-        itemSobre.addActionListener(e -> new DialogoSobre(this).setVisible(true));
+	private void configurarBandeja() {
+		if (!SystemTray.isSupported()) {
+			System.err.println("Bandeja do sistema nao suportada nesta plataforma.");
+			return;
+		}
 
-        MenuItem itemSair = new MenuItem("Sair");
-        itemSair.addActionListener(e -> encerrarAplicativo());
+		PopupMenu menu = new PopupMenu();
 
-        menu.add(itemAbrir);
-        menu.addSeparator();
-        menu.add(itemConfig);
-        menu.add(itemAvancado);
-        menu.addSeparator();
-        menu.add(itemSobre);
-        menu.addSeparator();
-        menu.add(itemSair);
+		MenuItem itemAbrir = new MenuItem("Abrir janela principal");
+		itemAbrir.addActionListener(e -> mostrarJanela());
 
-        Image iconeInicial = icones.getIconeInativo();
-        trayIcon = new TrayIcon(iconeInicial, "Indicador de Atividade de Rede - ocioso", menu);
-        trayIcon.setImageAutoSize(true);
-        trayIcon.addActionListener(e -> mostrarJanela()); // duplo clique
+		MenuItem itemConfig = new MenuItem("Configuracoes...");
+		itemConfig.addActionListener(e -> abrirConfiguracoes());
 
-        try {
-            SystemTray.getSystemTray().add(trayIcon);
-        } catch (AWTException e) {
-            System.err.println("Nao foi possivel adicionar o icone na bandeja: " + e.getMessage());
-        }
-    }
+		MenuItem itemAvancado = new MenuItem("Estatisticas avancadas...");
+		itemAvancado.addActionListener(e -> new DialogoAvancado(this, monitor).setVisible(true));
 
-    private void mostrarJanela() {
-        setVisible(true);
-        setState(Frame.NORMAL);
-        toFront();
-    }
+		MenuItem itemSobre = new MenuItem("Sobre...");
+		itemSobre.addActionListener(e -> new DialogoSobre(this).setVisible(true));
 
-    private void abrirConfiguracoes() {
-        DialogoConfiguracoes dialogo = new DialogoConfiguracoes(this, config, monitor, this::reiniciarMonitoramento);
-        dialogo.setVisible(true);
-    }
+		MenuItem itemSair = new MenuItem("Sair");
+		itemSair.addActionListener(e -> encerrarAplicativo());
 
-    private void encerrarAplicativo() {
-        if (timerMonitoramento != null) timerMonitoramento.stop();
-        if (trayIcon != null && SystemTray.isSupported()) {
-            SystemTray.getSystemTray().remove(trayIcon);
-        }
-        dispose();
-        System.exit(0);
-    }
+		menu.add(itemAbrir);
+		menu.addSeparator();
+		menu.add(itemConfig);
+		menu.add(itemAvancado);
+		menu.addSeparator();
+		menu.add(itemSobre);
+		menu.addSeparator();
+		menu.add(itemSair);
 
-    // ---------------------------------------------------------------
-    // Monitoramento de trafego (equivalente ao Timer_Tick do MainForm.cs)
-    // ---------------------------------------------------------------
+		Image iconeInicial = icones.getIconeInativo();
+		trayIcon = new TrayIcon(iconeInicial, "Indicador de Atividade de Rede - ocioso", menu);
+		trayIcon.setImageAutoSize(true);
+		trayIcon.addActionListener(e -> mostrarJanela()); // duplo clique
 
-    private void iniciarMonitoramento() {
-        timerMonitoramento = new javax.swing.Timer(config.getIntervaloAtualizacaoMs(), e -> atualizarTrafego());
-        timerMonitoramento.start();
-    }
+		try {
+			SystemTray.getSystemTray().add(trayIcon);
+		} catch (AWTException e) {
+			System.err.println("Nao foi possivel adicionar o icone na bandeja: " + e.getMessage());
+		}
+	}
 
-    private void reiniciarMonitoramento() {
-        if (timerMonitoramento != null) {
-            timerMonitoramento.stop();
-        }
-        iniciarMonitoramento();
-    }
+	private void mostrarJanela() {
+		setVisible(true);
+		setState(Frame.NORMAL);
+		toFront();
+	}
 
-    private void atualizarTrafego() {
-        List<String> interfacesHabilitadas = config.getInterfacesHabilitadas();
-        long[] contadores = monitor.lerContadoresAgregados(interfacesHabilitadas);
-        long bytesRecebidos = contadores[0];
-        long bytesEnviados = contadores[1];
+	private void abrirConfiguracoes() {
+		DialogoConfiguracoes dialogo = new DialogoConfiguracoes(this, config, monitor, this::reiniciarMonitoramento);
+		dialogo.setVisible(true);
+	}
 
-        if (bytesRecebidosAnterior < 0) {
-            // primeira leitura: apenas guarda a referencia, sem calcular velocidade
-            bytesRecebidosAnterior = bytesRecebidos;
-            bytesEnviadosAnterior = bytesEnviados;
-            return;
-        }
+	private void encerrarAplicativo() {
+		if (timerMonitoramento != null)
+			timerMonitoramento.stop();
+		if (trayIcon != null && SystemTray.isSupported()) {
+			SystemTray.getSystemTray().remove(trayIcon);
+		}
+		dispose();
+		System.exit(0);
+	}
 
-        double intervaloSegundos = config.getIntervaloAtualizacaoMs() / 1000.0;
-        long deltaRecebido = bytesRecebidos - bytesRecebidosAnterior;
-        long deltaEnviado = bytesEnviados - bytesEnviadosAnterior;
+	// ---------------------------------------------------------------
+	// Monitoramento de trafego (equivalente ao Timer_Tick do MainForm.cs)
+	// ---------------------------------------------------------------
 
-        boolean recebendo = deltaRecebido > 0;
-        boolean enviando = deltaEnviado > 0;
+	private void iniciarMonitoramento() {
+		timerMonitoramento = new javax.swing.Timer(config.getIntervaloAtualizacaoMs(), e -> atualizarTrafego());
+		timerMonitoramento.start();
+	}
 
-        double velocidadeDownload = recebendo ? Math.abs(deltaRecebido / intervaloSegundos) : 0;
-        double velocidadeUpload = enviando ? Math.abs(deltaEnviado / intervaloSegundos) : 0;
+	private void reiniciarMonitoramento() {
+		if (timerMonitoramento != null) {
+			timerMonitoramento.stop();
+		}
+		iniciarMonitoramento();
+	}
 
-        bytesRecebidosAnterior = bytesRecebidos;
-        bytesEnviadosAnterior = bytesEnviados;
+	private void atualizarTrafego() {
+		List<String> interfacesHabilitadas = config.getInterfacesHabilitadas();
+		long[] contadores = monitor.lerContadoresAgregados(interfacesHabilitadas);
+		long bytesRecebidos = contadores[0];
+		long bytesEnviados = contadores[1];
 
-        grafico.registrarAmostra(velocidadeDownload / 1024.0, velocidadeUpload / 1024.0);
+		if (bytesRecebidosAnterior < 0) {
+			// primeira leitura: apenas guarda a referencia, sem calcular velocidade
+			bytesRecebidosAnterior = bytesRecebidos;
+			bytesEnviadosAnterior = bytesEnviados;
+			return;
+		}
 
-        lblDownloadAtual.setText("Download atual: " + Formatador.formatarVelocidade(velocidadeDownload));
-        lblUploadAtual.setText("Upload atual: " + Formatador.formatarVelocidade(velocidadeUpload));
-        lblTotalRecebido.setText("Total recebido: " + Formatador.formatarBytes(bytesRecebidos));
-        lblTotalEnviado.setText("Total enviado: " + Formatador.formatarBytes(bytesEnviados));
+		double intervaloSegundos = config.getIntervaloAtualizacaoMs() / 1000.0;
+		long deltaRecebido = bytesRecebidos - bytesRecebidosAnterior;
+		long deltaEnviado = bytesEnviados - bytesEnviadosAnterior;
 
-        atualizarIconeBandeja(recebendo, enviando, velocidadeDownload, velocidadeUpload);
-    }
+		boolean recebendo = deltaRecebido > 0;
+		boolean enviando = deltaEnviado > 0;
 
-    private void atualizarIconeBandeja(boolean recebendo, boolean enviando,
-                                        double velocidadeDownload, double velocidadeUpload) {
-        if (trayIcon == null) return;
+		double velocidadeDownload = recebendo ? Math.abs(deltaRecebido / intervaloSegundos) : 0;
+		double velocidadeUpload = enviando ? Math.abs(deltaEnviado / intervaloSegundos) : 0;
 
-        if (!recebendo && !enviando) {
-            contadorOcioso++;
-            if (contadorOcioso >= 5) {
-                trayIcon.setImage(icones.getIconeInativo());
-                trayIcon.setToolTip("Indicador de Atividade de Rede - ocioso");
-            }
-            return;
-        }
-        contadorOcioso = 0;
+		bytesRecebidosAnterior = bytesRecebidos;
+		bytesEnviadosAnterior = bytesEnviados;
 
-        if (config.isLimitesPersonalizados()) {
-            int nivelDownload = calculadora.calcularNivel((long) velocidadeDownload, config.getBandaDownloadMbps());
-            int nivelUpload = calculadora.calcularNivel((long) velocidadeUpload, config.getBandaUploadMbps());
+		grafico.registrarAmostra(velocidadeDownload / 1024.0, velocidadeUpload / 1024.0);
 
-            Image novoIcone;
-            if (recebendo && enviando) {
-                novoIcone = icones.getIconeAtivo(nivelUpload, nivelDownload);
-            } else if (recebendo) {
-                novoIcone = icones.getIconeDownload(nivelDownload);
-            } else {
-                novoIcone = icones.getIconeUpload(nivelUpload);
-            }
-            trayIcon.setImage(novoIcone);
-        } else {
-            trayIcon.setImage(icones.getIconeAtivo(CalculadoraDeNivel.AZUL, CalculadoraDeNivel.AZUL));
-        }
+		lblDownloadAtual.setText("Download atual: " + Formatador.formatarVelocidade(velocidadeDownload));
+		lblUploadAtual.setText("Upload atual: " + Formatador.formatarVelocidade(velocidadeUpload));
+		lblTotalRecebido.setText("Total recebido: " + Formatador.formatarBytes(bytesRecebidos));
+		lblTotalEnviado.setText("Total enviado: " + Formatador.formatarBytes(bytesEnviados));
 
-        trayIcon.setToolTip(String.format(
-                "Indicador de Atividade de Rede%n\u2193 %s   \u2191 %s",
-                Formatador.formatarVelocidade(velocidadeDownload),
-                Formatador.formatarVelocidade(velocidadeUpload)));
-    }
+		atualizarIconeBandeja(recebendo, enviando, velocidadeDownload, velocidadeUpload);
+	}
+
+	private void atualizarIconeBandeja(boolean recebendo, boolean enviando, double velocidadeDownload,
+			double velocidadeUpload) {
+		if (trayIcon == null)
+			return;
+
+		if (!recebendo && !enviando) {
+			contadorOcioso++;
+			if (contadorOcioso >= 5) {
+				trayIcon.setImage(icones.getIconeInativo());
+				trayIcon.setToolTip("Indicador de Atividade de Rede - ocioso");
+			}
+			return;
+		}
+		contadorOcioso = 0;
+
+		if (config.isLimitesPersonalizados()) {
+			int nivelDownload = calculadora.calcularNivel((long) velocidadeDownload, config.getBandaDownloadMbps());
+			int nivelUpload = calculadora.calcularNivel((long) velocidadeUpload, config.getBandaUploadMbps());
+
+			Image novoIcone;
+			if (recebendo && enviando) {
+				novoIcone = icones.getIconeAtivo(nivelUpload, nivelDownload);
+			} else if (recebendo) {
+				novoIcone = icones.getIconeDownload(nivelDownload);
+			} else {
+				novoIcone = icones.getIconeUpload(nivelUpload);
+			}
+			trayIcon.setImage(novoIcone);
+		} else {
+			trayIcon.setImage(icones.getIconeAtivo(CalculadoraDeNivel.AZUL, CalculadoraDeNivel.AZUL));
+		}
+
+		trayIcon.setToolTip(String.format("Indicador de Atividade de Rede%n\u2193 %s   \u2191 %s",
+				Formatador.formatarVelocidade(velocidadeDownload), Formatador.formatarVelocidade(velocidadeUpload)));
+	}
 }
